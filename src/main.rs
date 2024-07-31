@@ -1,9 +1,8 @@
 
-use std::cell::Cell;
 use std::rc::Rc;
 
 use adw::{prelude::*, ActionRow, Application, PreferencesGroup, PreferencesPage, PreferencesRow};
-use gtk::{glib, Adjustment, Box, DropDown, Label, Orientation, PositionType, Scale, StringList};
+use gtk::{glib, Adjustment, Box, DropDown, Label, Orientation, PositionType, Scale, ScrolledWindow, StringList};
 use gtk::ApplicationWindow;
 use v4l::prelude::*;
 
@@ -12,8 +11,6 @@ mod files;
 const APP_ID: &str = "de.pixelgerecht.v4l2_gui";
 
 // Next Steps
-// TODO Scrolling
-// TODO Bigger initial window
 // TODO Label with min width
 // TODO All controls
 // TODO Reload labels on change
@@ -63,11 +60,19 @@ fn build_ui(app: &Application) {
         page.add(group);
     }
 
+    let scroll = ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .min_content_height(600)
+        .vexpand(true)
+        .build();
+
+    scroll.set_child(Some(&page));
+
     // Create a window and set the title
     let window = ApplicationWindow::builder()
         .application(app)
-        .child(&page)
-        .title("My GTK App")
+        .child(&scroll)
+        .title("Camera Controls")
         .width_request(800)
         .height_request(600)
         .build();
@@ -172,12 +177,12 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
 
     let ctrls = ctrls_result.unwrap();
 
-    // Default group if there is not group defined in the controls of the camera
-    let mut current_group = PreferencesGroup::builder()
-        .title("Controls")
-        .build();
-
     for ctrl_desc in ctrls.iter() {
+        if groups.is_empty() && ctrl_desc.typ != v4l::control::Type::CtrlClass {
+            let group = PreferencesGroup::builder().title("Controls").build();
+            groups.push(group);
+        }
+
         match ctrl_desc.typ {
             v4l::control::Type::Area => println!("TODO Area Control"),
             v4l::control::Type::Button => println!("TODO Button Control"),
@@ -186,15 +191,11 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
 
             // Control-groups
             v4l::control::Type::CtrlClass => {
-                // TODO Does not work
-                // Only use current group, it contains controls - especially the default group
-                if current_group.first_child().is_some() {
-                    groups.push(current_group);
-                }
-
-                current_group = PreferencesGroup::builder()
+                let new_group = PreferencesGroup::builder()
                     .title(ctrl_desc.name.clone())
                     .build();
+
+                groups.push(new_group);
             },
 
             // Slider-controls
@@ -239,6 +240,9 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
                     .value_pos(PositionType::Right)
                     .build();
 
+                scale.add_mark(ctrl_desc.default as f64, PositionType::Bottom, None);
+
+
                 let id_copy = ctrl_desc.id;
                 let dev_copy = device.clone();
                 scale.connect_value_changed(move |scale| {
@@ -253,12 +257,12 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
                 let (row, rowbox) = create_pref_row_with_box_and_label(ctrl_desc.name.clone());
                 rowbox.append(&scale);
 
-                current_group.add(&row);
+                groups.last().expect("No group set, while building controls").add(&row);
             }
 
-            v4l::control::Type::IntegerMenu => println!(""),
-            v4l::control::Type::Menu => println!(""),
-            v4l::control::Type::String => println!(""),
+            v4l::control::Type::IntegerMenu |
+            v4l::control::Type::Menu => println!("TODO Menu"),
+            v4l::control::Type::String => println!("TODO String"),
         }
     }
 //
