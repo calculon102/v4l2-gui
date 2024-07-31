@@ -1,4 +1,7 @@
 
+use std::cell::Cell;
+use std::rc::Rc;
+
 use adw::{prelude::*, ActionRow, Application, PreferencesGroup, PreferencesPage, PreferencesRow};
 use gtk::{glib, Adjustment, Box, DropDown, Label, Orientation, PositionType, Scale, StringList};
 use gtk::ApplicationWindow;
@@ -127,12 +130,12 @@ fn create_prefs_for_path(device_path: String) -> Vec<PreferencesGroup> {
     let device = Device::with_path(device_path);
 
     match device {
-        Ok(d) => create_controls_for_device(d),
+        Ok(d) => create_controls_for_device(Rc::new(d)),
         Err(e) => create_group_with_error(e.to_string()),
     }
 }
 
-fn create_controls_for_device(device: Device) -> Vec<PreferencesGroup> {
+fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
     let mut groups = vec![];
 
     // Create Caps-Info
@@ -176,10 +179,10 @@ fn create_controls_for_device(device: Device) -> Vec<PreferencesGroup> {
 
     for ctrl_desc in ctrls.iter() {
         match ctrl_desc.typ {
-            v4l::control::Type::Area => println!(""),
-            v4l::control::Type::Button => println!(""),
-            v4l::control::Type::Boolean => println!(""),
-            v4l::control::Type::Bitmask => println!(""),
+            v4l::control::Type::Area => println!("TODO Area Control"),
+            v4l::control::Type::Button => println!("TODO Button Control"),
+            v4l::control::Type::Boolean => println!("TODO Boolean Control"),
+            v4l::control::Type::Bitmask => println!("TODO Bitmask Control"),
 
             // Control-groups
             v4l::control::Type::CtrlClass => {
@@ -228,12 +231,24 @@ fn create_controls_for_device(device: Device) -> Vec<PreferencesGroup> {
                 // TODO Add event handler to set control
                 let scale = Scale::builder()
                     .adjustment(&adjustment)
+                    .digits(0)
                     .draw_value(true)
                     .hexpand(true)
                     .orientation(Orientation::Horizontal)
                     .show_fill_level(true)
                     .value_pos(PositionType::Right)
                     .build();
+
+                let id_copy = ctrl_desc.id;
+                let dev_copy = device.clone();
+                scale.connect_value_changed(move |scale| {
+                    let new_value = v4l::control::Value::Integer(scale.value() as i64);
+                    let new_control = v4l::control::Control { id: id_copy, value: new_value };
+                    match dev_copy.set_control(new_control) {
+                        Ok(_) => {},
+                        Err(e) => eprintln!("Error setting control: {}", e),
+                    };
+                });
 
                 let (row, rowbox) = create_pref_row_with_box_and_label(ctrl_desc.name.clone());
                 rowbox.append(&scale);
