@@ -1,10 +1,12 @@
 
+use std::fmt::{Display, Formatter};
 use std::rc::Rc;
 
-use adw::{prelude::*, Application, PreferencesGroup, PreferencesPage, PreferencesRow};
+use adw::{prelude::*, Application, PreferencesGroup, PreferencesPage, PreferencesRow, SwitchRow};
 use components::{create_hbox, create_info_row, create_pref_row_with_box_and_label};
 use gtk::{glib, Adjustment, Align, Button, DropDown, Label, Orientation, PositionType, Scale, ScrolledWindow, StringList};
 use gtk::ApplicationWindow;
+use v4l::control::Description;
 use v4l::prelude::*;
 
 mod components;
@@ -129,6 +131,9 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
     let ctrls = ctrls_result.unwrap();
 
     // TODO Handle controls with UPDATE flag
+    // TODO Handle controls with INACTIVE flag
+    //  - After Button or Boolean, check for all INACTIVE or UPDATE fields!
+    // TODO Reset value on error
     for ctrl_desc in ctrls.iter() {
         // Ignore disabled controls
         if ctrl_desc.flags.contains(v4l::control::Flags::DISABLED) {
@@ -142,6 +147,7 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
         }
 
         let readonly = ctrl_desc.flags.contains(v4l::control::Flags::READ_ONLY);
+        let inactive = ctrl_desc.flags.contains(v4l::control::Flags::INACTIVE);
 
         match ctrl_desc.typ {
             // TODO Implement
@@ -152,6 +158,7 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
                 let button = Button::builder()
                     .halign(Align::Center)
                     .label(ctrl_desc.name.clone())
+                    .sensitive(!readonly && !inactive)
                     .build();
 
                 let id_copy = ctrl_desc.id;
@@ -176,13 +183,39 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
                 groups.last().expect("No group set, while building controls").add(&row);
             },
 
-            // TODO Implement
+            // Boolean-control
             v4l::control::Type::Boolean => {
-                 
+                let active = match query_control_boolean(&device, &ctrl_desc) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        println!("{}", e.message);
+                        continue;
+                    },
+                };
+
+                let row = SwitchRow::builder()
+                    .active(active)
+                    .hexpand(true)
+                    .sensitive(!readonly && !inactive)
+                    .title(ctrl_desc.name.clone())
+                    .build();
+
+                let id_copy = ctrl_desc.id;
+                let dev_copy = device.clone();
+                row.connect_active_notify(move |row| {
+                    let new_value = v4l::control::Value::Boolean(row.is_active());
+                    let new_control = v4l::control::Control { id: id_copy, value: new_value };
+                    match dev_copy.set_control(new_control) {
+                        Ok(_) => {},
+                        Err(e) => eprintln!("Error setting control: {}", e),
+                    };
+                });
+                    
+                groups.last().expect("No group set, while building controls").add(&row);
             },
 
             // TODO Implement
-            v4l::control::Type::Bitmask => println!("TODO Bitmask Control"),
+            v4l::control::Type::Bitmask => println!("Ignore Bitmask Control"),
 
             // Control-groups
             v4l::control::Type::CtrlClass => {
@@ -199,29 +232,19 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
             v4l::control::Type::U8 |
             v4l::control::Type::U16 |
             v4l::control::Type::U32 => {
-                let control = device.control(ctrl_desc.id);
-
-                if control.is_err() {
-                    eprintln!("Error reading control {}: {}", ctrl_desc.name, control.unwrap_err().to_string());
-                    continue;
-                }
-
-                let control_value = control.unwrap().value;
-                let extracted_value = match control_value {
-                    v4l::control::Value::Integer(int) => int,
-                    _ => {
-                        eprintln!("Expected Integer for {}, but got ", ctrl_desc.name);
-                        // TODO better way?
-                        dbg!(control_value);
+                let value = match query_control_integer(&device, &ctrl_desc) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        println!("{}", e.message);
                         continue;
-                    }
+                    },
                 };
 
                 let adjustment = Adjustment::builder()
                     .lower(ctrl_desc.minimum as f64)
                     .upper(ctrl_desc.maximum as f64)
                     .step_increment(ctrl_desc.step as f64)
-                    .value(extracted_value as f64)
+                    .value(value as f64)
                     .build();
 
                 let scale = Scale::builder()
@@ -230,7 +253,7 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
                     .draw_value(true)
                     .hexpand(true)
                     .orientation(Orientation::Horizontal)
-                    .sensitive(!readonly)
+                    .sensitive(!readonly && !inactive)
                     .show_fill_level(true)
                     .value_pos(PositionType::Right)
                     .build();
@@ -278,4 +301,47 @@ fn create_group_with_error(msg: String) -> Vec<PreferencesGroup> {
     err_group.add(&row);
 
     return vec![err_group];
+}
+
+
+#[derive(Debug, Clone)]
+struct ControlValueError {
+    message: String
+}
+
+impl ControlValueError {
+    fn new(message: String) -> ControlValueError {
+        return ControlValueError { message };
+    }
+}
+
+impl Display for ControlValueError {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error>{
+        write!(f, "{}", self.message)
+    }
+}
+
+
+fn query_control_boolean(device: &Device, ctrl_desc: &Description) -> Result<bool, ControlValueError> {
+    let control = match device.control(ctrl_desc.id) {
+        Ok(v) => v,
+        Err(e) => return Err(ControlValueError::new(e.to_string())),
+    };
+
+    return match control.value {
+        v4l::control::Value::Boolean(bool_val) => Ok(bool_val),
+        _ => Err(ControlValueError::new(format!("Value of {} is not a boolean", ctrl_desc.name))),
+    };
+}
+
+fn query_control_integer(device: &Device, ctrl_desc: &Description) -> Result<i64, ControlValueError> {
+    let control = match device.control(ctrl_desc.id) {
+        Ok(v) => v,
+        Err(e) => return Err(ControlValueError::new(e.to_string())),
+    };
+
+    return match control.value {
+        v4l::control::Value::Integer(int_val) => Ok(int_val),
+        _ => Err(ControlValueError::new(format!("Value of {} is not an integer", ctrl_desc.name))),
+    };
 }
