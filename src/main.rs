@@ -1,11 +1,13 @@
 
 use std::rc::Rc;
 
-use adw::{prelude::*, ActionRow, Application, PreferencesGroup, PreferencesPage, PreferencesRow};
-use gtk::{glib, Adjustment, Box, DropDown, Label, Orientation, PositionType, Scale, ScrolledWindow, StringList};
+use adw::{prelude::*, Application, PreferencesGroup, PreferencesPage, PreferencesRow};
+use components::{create_hbox, create_info_row, create_pref_row_with_box_and_label};
+use gtk::{glib, Adjustment, Align, Button, DropDown, Label, Orientation, PositionType, Scale, ScrolledWindow, StringList};
 use gtk::ApplicationWindow;
 use v4l::prelude::*;
 
+mod components;
 mod files;
 
 const APP_ID: &str = "de.pixelgerecht.v4l2_gui";
@@ -28,7 +30,6 @@ fn main() -> glib::ExitCode {
 }
 
 fn build_ui(app: &Application) {
-
     let device_selection_group = PreferencesGroup::new();
     device_selection_group.set_title("Camera");
 
@@ -79,53 +80,6 @@ fn build_ui(app: &Application) {
 
     // Present window
     window.present();
-}
-
-fn create_label(label: String) -> Label {
-    Label::builder()
-        .ellipsize(gtk::pango::EllipsizeMode::End)
-        .label(label.as_str())
-        .tooltip_text(label.as_str())
-        .max_width_chars(12)
-        .xalign(0.0)
-        .build()
-}
-
-
-/// Create a pre-configured row for a preference, that can be added to a
-/// PreferencesPage
-///
-/// The Box already contains a label, with the given string as text.
-/// Append to the box as needed.
-fn create_pref_row_with_box_and_label(label: String) -> (PreferencesRow, Box) {
-    let row = PreferencesRow::new();
-    
-    let label = create_label(label);
-
-    let rowbox = Box::builder()
-        .margin_end(12)
-        .margin_top(12)
-        .margin_start(12)
-        .margin_bottom(12)
-        .orientation(Orientation::Horizontal)
-        .spacing(12)
-        .build();
-
-    rowbox.append(&label);
-
-    row.set_child(Some(&rowbox));
-
-    (row, rowbox)
-}
-
-fn create_info_row(label: String, info: String) -> ActionRow {
-    let action_row = ActionRow::builder()
-        .title(label)
-        .subtitle(info)
-        .subtitle_selectable(true)
-        .build();
-
-    return action_row;
 }
 
 fn create_prefs_for_path(device_path: String) -> Vec<PreferencesGroup> {
@@ -190,9 +144,44 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
         let readonly = ctrl_desc.flags.contains(v4l::control::Flags::READ_ONLY);
 
         match ctrl_desc.typ {
-            v4l::control::Type::Area => println!("TODO Area Control"),
-            v4l::control::Type::Button => println!("TODO Button Control"),
-            v4l::control::Type::Boolean => println!("TODO Boolean Control"),
+            // TODO Implement
+            v4l::control::Type::Area => println!("Ignore area control {}", ctrl_desc.name),
+
+            // Button with action on camera 
+            v4l::control::Type::Button => {
+                let button = Button::builder()
+                    .halign(Align::Center)
+                    .label(ctrl_desc.name.clone())
+                    .build();
+
+                let id_copy = ctrl_desc.id;
+                let dev_copy = device.clone();
+                button.connect_clicked(move |_| {
+                    // Spec says, button should set the control to activate
+                    // According to spec, the value itself is ignored
+                    let new_value = v4l::control::Value::Integer(0);
+                    let new_control = v4l::control::Control { id: id_copy, value: new_value };
+                    match dev_copy.set_control(new_control) {
+                        Ok(_) => {},
+                        Err(e) => eprintln!("Error setting control: {}", e),
+                    };
+                });
+
+                let container = create_hbox();
+                container.append(&button);
+
+                let row = PreferencesRow::new();
+                row.set_child(Some(&container));
+
+                groups.last().expect("No group set, while building controls").add(&row);
+            },
+
+            // TODO Implement
+            v4l::control::Type::Boolean => {
+                 
+            },
+
+            // TODO Implement
             v4l::control::Type::Bitmask => println!("TODO Bitmask Control"),
 
             // Control-groups
