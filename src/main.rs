@@ -85,7 +85,8 @@ fn create_label(label: String) -> Label {
     Label::builder()
         .ellipsize(gtk::pango::EllipsizeMode::End)
         .label(label.as_str())
-        .use_underline(true)
+        .tooltip_text(label.as_str())
+        .max_width_chars(12)
         .xalign(0.0)
         .build()
 }
@@ -111,6 +112,7 @@ fn create_pref_row_with_box_and_label(label: String) -> (PreferencesRow, Box) {
         .build();
 
     rowbox.append(&label);
+
     row.set_child(Some(&rowbox));
 
     (row, rowbox)
@@ -122,11 +124,6 @@ fn create_info_row(label: String, info: String) -> ActionRow {
         .subtitle(info)
         .subtitle_selectable(true)
         .build();
-
-//    let (row, rowbox) = create_pref_row_with_box_and_label(label);
-
-//    let info_label = create_info(info);
-//    rowbox.append(&info_label);
 
     return action_row;
 }
@@ -177,11 +174,20 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
 
     let ctrls = ctrls_result.unwrap();
 
+    // TODO Handle controls with UPDATE flag
     for ctrl_desc in ctrls.iter() {
-        if groups.is_empty() && ctrl_desc.typ != v4l::control::Type::CtrlClass {
-            let group = PreferencesGroup::builder().title("Controls").build();
-            groups.push(group);
+        // Ignore disabled controls
+        if ctrl_desc.flags.contains(v4l::control::Flags::DISABLED) {
+            println!("Ignoring disabled control {}", ctrl_desc.name);
+            continue;
         }
+
+        if groups.is_empty() && ctrl_desc.typ != v4l::control::Type::CtrlClass {
+            let new_group = PreferencesGroup::builder().title("Controls").build();
+            groups.push(new_group);
+        }
+
+        let readonly = ctrl_desc.flags.contains(v4l::control::Flags::READ_ONLY);
 
         match ctrl_desc.typ {
             v4l::control::Type::Area => println!("TODO Area Control"),
@@ -229,19 +235,18 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
                     .value(extracted_value as f64)
                     .build();
 
-                // TODO Add event handler to set control
                 let scale = Scale::builder()
                     .adjustment(&adjustment)
                     .digits(0)
                     .draw_value(true)
                     .hexpand(true)
                     .orientation(Orientation::Horizontal)
+                    .sensitive(!readonly)
                     .show_fill_level(true)
                     .value_pos(PositionType::Right)
                     .build();
 
                 scale.add_mark(ctrl_desc.default as f64, PositionType::Bottom, None);
-
 
                 let id_copy = ctrl_desc.id;
                 let dev_copy = device.clone();
@@ -265,18 +270,6 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
             v4l::control::Type::String => println!("TODO String"),
         }
     }
-//
-//
-//    let (ctrl_row, ctrl_box) = create_pref_row_with_box_and_label("Some attributes".to_string());
-//
-//    let scale = Scale::new(
-//        Orientation::Horizontal,
-//        Some(&Adjustment::new(128.0, 0.0, 257.0, 1.0, 1.0, 10.0))
-//    );
-//    scale.set_hexpand(true);
-//
-//    ctrl_box.append(&scale);
-//    group.add(&ctrl_row);
 
     return groups;
 } 
