@@ -934,6 +934,7 @@ dependencies = [
 name = "v4l2-gui"
 version = "0.1.0"
 dependencies = [
+ "glib",
  "gtk4",
  "libadwaita",
  "tempfile",
