@@ -1,3 +1,5 @@
+use std::borrow::{Borrow, BorrowMut};
+use std::cell::{Cell, RefCell};
 use std::fmt::{Display, Formatter};
 use std::rc::Rc;
 
@@ -6,7 +8,7 @@ use adw::{
 };
 use components::{create_hbox, create_info_row, create_pref_row_with_box_and_label};
 use gtk::gio::ListStore;
-use gtk::ApplicationWindow;
+use gtk::{ApplicationWindow, StringObject};
 use gtk::{
     glib, Adjustment, Align, Button, DropDown, Label, ListItem, Orientation, PositionType, Scale,
     ScrolledWindow, SignalListItemFactory, StringList,
@@ -50,29 +52,55 @@ fn build_ui(app: &Application) {
 
     // Create combobox with video-devices for selection
     // TODO Error / Notice, when no camera present
-    // TODO Add signal to selection and recreate attributes panel with attributes
-    // TODO Print Infos about camera on selection
+    // TODO Error / Notice, when controls cannot be read
     let device_selection_strings = files::get_video_devices("/dev");
     let device_selection_str: Vec<&str> = device_selection_strings
         .iter()
         .map(|s| s.as_str())
         .collect();
-    let device_selection_model = StringList::new(&device_selection_str);
+    let device_selection_model = Rc::new(StringList::new(&device_selection_str));
     let device_selection_dropdown = DropDown::builder()
         .hexpand(true)
-        .model(&device_selection_model)
+        .model(device_selection_model.as_ref())
         .build();
 
     device_selection_box.append(&device_selection_dropdown);
     device_selection_group.add(&device_selection_row);
 
-    let page = PreferencesPage::new();
+    let page = Rc::new(PreferencesPage::new());
     page.add(&device_selection_group);
 
-    let pref_groups: Vec<PreferencesGroup> = create_prefs_for_path("/dev/video0".to_string());
-    for group in pref_groups.iter() {
+    let pref_groups: Rc<RefCell<Vec<PreferencesGroup>>> = Rc::new(RefCell::new(create_prefs_for_path("/dev/video0".to_string())));
+    let groups: &RefCell<Vec<PreferencesGroup>> = pref_groups.borrow();
+    for group in groups.borrow().iter() {
         page.add(group);
     }
+
+    let page_copy = page.clone();
+    let groups_copy = pref_groups.clone();
+    let model_copy = device_selection_model.clone();
+    device_selection_dropdown.connect_selected_item_notify(move |cb| {
+        let device_path = match model_copy.string(cb.selected()) {
+            Some(dp) => dp,
+            None => { 
+                eprintln!("No string selected at position {}!?", cb.selected());
+                return;
+            },
+        };
+
+        let groups: &RefCell<Vec<PreferencesGroup>> = groups_copy.borrow();
+        for group in groups.borrow().iter() {
+            page_copy.remove(group);
+        }
+
+        groups.borrow_mut().clear();
+        let mut new_groups: Vec<PreferencesGroup> = create_prefs_for_path(device_path.to_string());
+
+        for group in new_groups.iter() {
+            page_copy.add(group);
+        }
+        groups.borrow_mut().append(&mut new_groups);
+    });
 
     let scroll = ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
@@ -80,7 +108,7 @@ fn build_ui(app: &Application) {
         .vexpand(true)
         .build();
 
-    scroll.set_child(Some(&page));
+    scroll.set_child(Some(page.as_ref()));
 
     // Create a window and set the title
     let window = ApplicationWindow::builder()
@@ -166,9 +194,12 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
         let readonly = ctrl_desc.flags.contains(v4l::control::Flags::READ_ONLY);
         let inactive = ctrl_desc.flags.contains(v4l::control::Flags::INACTIVE);
 
-        match ctrl_desc.typ {
+        let row: PreferencesRow = match ctrl_desc.typ {
             // TODO Implement
-            v4l::control::Type::Area => println!("Ignore area control {}", ctrl_desc.name),
+            v4l::control::Type::Area => {
+                println!("Ignore area control {}", ctrl_desc.name);
+                continue;
+            },
 
             // Button with action on camera
             v4l::control::Type::Button => {
@@ -200,10 +231,7 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
                 let row = PreferencesRow::new();
                 row.set_child(Some(&container));
 
-                groups
-                    .last()
-                    .expect("No group set, while building controls")
-                    .add(&row);
+                row
             }
 
             // Boolean-control
@@ -237,14 +265,14 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
                     };
                 });
 
-                groups
-                    .last()
-                    .expect("No group set, while building controls")
-                    .add(&row);
+                row.into()
             }
 
             // TODO Implement
-            v4l::control::Type::Bitmask => println!("Ignore Bitmask Control"),
+            v4l::control::Type::Bitmask => {
+                println!("Ignore Bitmask Control");
+                continue;
+            },
 
             // Control-groups
             v4l::control::Type::CtrlClass => {
@@ -253,6 +281,7 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
                     .build();
 
                 groups.push(new_group);
+                continue;
             }
 
             // Slider-controls
@@ -306,10 +335,7 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
                 let (row, rowbox) = create_pref_row_with_box_and_label(ctrl_desc.name.clone());
                 rowbox.append(&scale);
 
-                groups
-                    .last()
-                    .expect("No group set, while building controls")
-                    .add(&row);
+                row.into()
             }
 
             v4l::control::Type::IntegerMenu | v4l::control::Type::Menu => {
@@ -397,15 +423,20 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
                     };
                 });
 
-                groups
-                    .last()
-                    .expect("No group set, while building controls")
-                    .add(&row);
+                row.into()
             }
 
             // TODO Implement
-            v4l::control::Type::String => println!("Ignore string control"),
-        }
+            v4l::control::Type::String => {
+                println!("Ignore string control");
+                continue;
+            },
+        };
+
+        groups
+            .last()
+            .expect("No group set, while building controls")
+            .add(&row);
     }
 
     return groups;
