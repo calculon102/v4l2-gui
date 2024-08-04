@@ -1,5 +1,5 @@
-use std::borrow::{Borrow, BorrowMut};
-use std::cell::{Cell, RefCell};
+use std::borrow::Borrow;
+use std::cell::RefCell;
 use std::fmt::{Display, Formatter};
 use std::rc::Rc;
 
@@ -8,7 +8,7 @@ use adw::{
 };
 use components::{create_hbox, create_info_row, create_pref_row_with_box_and_label};
 use gtk::gio::ListStore;
-use gtk::{ApplicationWindow, StringObject};
+use gtk::ApplicationWindow;
 use gtk::{
     glib, Adjustment, Align, Button, DropDown, Label, ListItem, Orientation, PositionType, Scale,
     ScrolledWindow, SignalListItemFactory, StringList,
@@ -24,9 +24,7 @@ mod key_value_item;
 const APP_ID: &str = "de.pixelgerecht.v4l2_gui";
 
 // Next Steps
-// TODO Label with min width
 // TODO All controls
-// TODO Reload labels on change
 // TODO Hot (de-)plug?
 // TODO Show image?
 
@@ -40,19 +38,11 @@ fn main() -> glib::ExitCode {
     app.run()
 }
 
+
+// TODO Error / Notice, when controls cannot be read
+// TODO CLI-Param to overide /dev/video*
 fn build_ui(app: &Application) {
-    let device_selection_group = PreferencesGroup::new();
-    device_selection_group.set_title("Camera");
-
-    let device_controls_group = PreferencesGroup::new();
-    device_controls_group.set_title("Camera attributes");
-
-    let (device_selection_row, device_selection_box) =
-        create_pref_row_with_box_and_label("Select device".to_string());
-
     // Create combobox with video-devices for selection
-    // TODO Error / Notice, when no camera present
-    // TODO Error / Notice, when controls cannot be read
     let device_selection_strings = files::get_video_devices("/dev");
     let device_selection_str: Vec<&str> = device_selection_strings
         .iter()
@@ -64,20 +54,30 @@ fn build_ui(app: &Application) {
         .model(device_selection_model.as_ref())
         .build();
 
+    let (device_selection_row, device_selection_box) =
+        create_pref_row_with_box_and_label("Select device".to_string());
     device_selection_box.append(&device_selection_dropdown);
+
+    let device_selection_group = PreferencesGroup::new();
+    device_selection_group.set_title("Camera");
     device_selection_group.add(&device_selection_row);
 
     let page = Rc::new(PreferencesPage::new());
     page.add(&device_selection_group);
 
-    let pref_groups: Rc<RefCell<Vec<PreferencesGroup>>> = Rc::new(RefCell::new(create_prefs_for_path("/dev/video0".to_string())));
-    let groups: &RefCell<Vec<PreferencesGroup>> = pref_groups.borrow();
+    let pref_groups = match device_selection_strings.first() {
+        Some(dev) => create_prefs_for_path(dev.to_string()),
+        None => create_group_with_error("No video device connected".to_string()),
+    };
+    let pref_groups_ref = Rc::new(RefCell::new(pref_groups));
+
+    let groups: &RefCell<Vec<PreferencesGroup>> = pref_groups_ref.borrow();
     for group in groups.borrow().iter() {
         page.add(group);
     }
 
     let page_copy = page.clone();
-    let groups_copy = pref_groups.clone();
+    let groups_copy = pref_groups_ref.clone();
     let model_copy = device_selection_model.clone();
     device_selection_dropdown.connect_selected_item_notify(move |cb| {
         let device_path = match model_copy.string(cb.selected()) {
@@ -88,14 +88,15 @@ fn build_ui(app: &Application) {
             },
         };
 
+        // Remove control groups for old selection
         let groups: &RefCell<Vec<PreferencesGroup>> = groups_copy.borrow();
         for group in groups.borrow().iter() {
             page_copy.remove(group);
         }
-
         groups.borrow_mut().clear();
-        let mut new_groups: Vec<PreferencesGroup> = create_prefs_for_path(device_path.to_string());
 
+        // Add control groups for new selection
+        let mut new_groups: Vec<PreferencesGroup> = create_prefs_for_path(device_path.to_string());
         for group in new_groups.iter() {
             page_copy.add(group);
         }
@@ -447,7 +448,12 @@ fn create_group_with_error(msg: String) -> Vec<PreferencesGroup> {
 
     let (row, rowbox) = create_pref_row_with_box_and_label("Message".to_string());
 
-    let err_label = Label::builder().label(msg).build();
+    let err_label = Label::builder()
+        .label(msg)
+        .halign(Align::End)
+        .hexpand(true)
+        .xalign(1.0)
+        .build();
     rowbox.append(&err_label);
 
     err_group.add(&row);
