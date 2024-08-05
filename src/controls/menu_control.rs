@@ -20,7 +20,7 @@ pub struct MenuControl {
 }
 
 impl MenuControl {
-    pub fn new(device: Rc<Device>, description: &Description, on_change: fn()) -> Self {
+    pub fn new(device: Rc<Device>, description: &Description, on_change: Rc<Box<dyn Fn() + 'static>>) -> Self {
         let readonly = description.flags.contains(v4l::control::Flags::READ_ONLY);
         let inactive = description.flags.contains(v4l::control::Flags::INACTIVE);
 
@@ -38,6 +38,7 @@ impl MenuControl {
             store.append(&KeyValueItem::new(item.0, &item.1.to_string()));
             if value as u32 == item.0 {
                 selected_position = count;
+                break;
             }
             count += 1;
         }
@@ -96,8 +97,9 @@ impl MenuControl {
                 id: id_copy,
                 value: new_value,
             };
+
             match dev_copy.set_control(new_control) {
-                Ok(_) => { on_change() }
+                Ok(_) => on_change(), 
                 Err(e) => eprintln!("Error setting control: {}", e),
             };
         });
@@ -151,8 +153,26 @@ impl ControlUi for MenuControl {
 
     fn update_value(&self, description: &Description) {
         let value = MenuControl::query_state(self.device.as_ref(), description);
+        
+        let ctrl_items = match &description.items {
+            Some(i) => i,
+            None => panic!("No menu items found for {}", description.name),
+        };
 
-        self.combo_row.set_selected(value as u32);
+        let mut new_selection = 0;
+        let mut count = 0;
+        for item in ctrl_items {
+            if value as u32 == item.0 {
+                new_selection = count;
+                break;
+            }
+            count += 1;
+        }
+        
+        let old_selection = self.combo_row.selected();
+        if new_selection != old_selection {
+            self.combo_row.set_selected(new_selection);
+        }
     }
 
     fn update_state(&self, description: &Description) {

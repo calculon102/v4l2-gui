@@ -1,9 +1,10 @@
 use std::borrow::Borrow;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use adw::{
-    prelude::*, Application, PreferencesGroup, PreferencesPage, PreferencesRow,
+    prelude::*, Application, PreferencesGroup, PreferencesPage,
 };
 use components::{create_info_row, create_pref_row_with_box_and_label};
 use controls::{BooleanControl, ButtonControl, IntegerControl, MenuControl};
@@ -23,9 +24,18 @@ mod key_value_item;
 const APP_ID: &str = "de.pixelgerecht.v4l2_gui";
 
 // Next Steps
+// TODO Add update-closue to button and boolean
+// TODO Prevent Update in all controls, when value is not changed
+// TODO Updating flag, to prevent change handlers?
+// TODO Extract Attributes panel into seperate module
+//
 // TODO All controls
 // TODO Hot (de-)plug?
 // TODO Show image?
+// TODO Flatpack packaging
+// TODO Error / Notice, when controls cannot be read
+// TODO CLI-Param to overide /dev/video*
+// TODO More compact sizing possible?
 
 fn main() -> glib::ExitCode {
     // Create a new application
@@ -38,8 +48,6 @@ fn main() -> glib::ExitCode {
 }
 
 
-// TODO Error / Notice, when controls cannot be read
-// TODO CLI-Param to overide /dev/video*
 fn build_ui(app: &Application) {
     // Create combobox with video-devices for selection
     let device_selection_strings = files::get_video_devices("/dev");
@@ -134,7 +142,23 @@ fn create_prefs_for_path(device_path: String) -> Vec<PreferencesGroup> {
 
 fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
     let mut groups = vec![];
-    let mut control_uis: Vec<Box<dyn ControlUi>> = vec![];
+
+    // WTF!? I just want to use this in a closure, re-used in event handlers of the controls
+    // So,
+    //  1. Rc: Shared reference
+    //  2. RefCell: Mutable withon
+    //  3. Hashmap: Control-UIs by Control-Id
+    //  4. Rc: Shared reference of the ControlUI
+    //  5. Box: In Heap, since...
+    //  6. dyn ControlUi: ...it's a trait, which size is not known at build time
+    let control_uis: Rc<RefCell<HashMap<u32, Rc<Box<dyn ControlUi>>>>> = Rc::new(RefCell::new(HashMap::new()));
+
+    // Closure for the change handlers to update all controls
+    let device_copy = device.clone();
+    let control_uis_copy = control_uis.clone();
+    let update_controls_fn: Rc<Box<dyn Fn() + 'static>> = Rc::new(Box::new(move || {
+        update_controls(device_copy.clone(), control_uis_copy.clone())
+    }));
 
     // Create Caps-Info
     let caps_result = device.query_caps();
@@ -176,9 +200,6 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
 
     let ctrls = ctrls_result.unwrap();
 
-    // TODO Handle controls with UPDATE flag
-    // TODO Handle controls with INACTIVE flag
-    //  - After Button or Boolean, check for all INACTIVE or UPDATE fields!
     // TODO Reset value on error
     for ctrl_desc in ctrls.iter() {
         // Ignore disabled controls
@@ -192,7 +213,7 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
             groups.push(new_group);
         }
 
-        let row: Rc<PreferencesRow> = match ctrl_desc.typ {
+        let ctrl_ui: Box<dyn ControlUi> = match ctrl_desc.typ {
             // TODO Implement
             v4l::control::Type::Area => {
                 println!("Ignore area control {}", ctrl_desc.name);
@@ -207,8 +228,7 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
                     || { println!("Switched!"); }
                 );
 
-                // TODO control_uis.push(Box::new(ctrl_ui));
-                ctrl_ui.preference_row().clone()
+                Box::new(ctrl_ui)
             }
 
             // Button with action on camera
@@ -219,8 +239,7 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
                     || { println!("Clicked!"); }
                 );
 
-                // TODO control_uis.push(Box::new(ctrl_ui));
-                ctrl_ui.preference_row().clone()
+                Box::new(ctrl_ui)
             }
 
             // TODO Implement
@@ -251,19 +270,17 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
                     || { println!("Changed!"); }
                 );
 
-                // TODO control_uis.push(Box::new(ctrl_ui));
-                ctrl_ui.preference_row().clone()
+                Box::new(ctrl_ui)
             }
 
             v4l::control::Type::IntegerMenu | v4l::control::Type::Menu => {
                 let ctrl_ui = MenuControl::new(
                     device.clone(),
                     &ctrl_desc,
-                    || { println!("Menu changed!"); }
+                    update_controls_fn.clone()
                 );
 
-                // TODO control_uis.push(Box::new(ctrl_ui));
-                ctrl_ui.preference_row().clone()
+                Box::new(ctrl_ui)
             }
 
             // TODO Implement
@@ -273,6 +290,10 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
             },
         };
 
+        let ctrl_ui_rc = Rc::new(ctrl_ui);
+        control_uis.borrow_mut().insert(ctrl_desc.id, ctrl_ui_rc.clone());
+
+        let row = ctrl_ui_rc.clone().preference_row().clone();
         groups
             .last()
             .expect("No group set, while building controls")
@@ -280,6 +301,30 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
     }
 
     return groups;
+}
+
+
+fn update_controls(device: Rc<Device>, control_uis: Rc<RefCell<HashMap<u32, Rc<Box<dyn ControlUi>>>>>) {
+    let descriptions = match device.query_controls() {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("Error querying controls for update: {}", e.to_string());
+            return;
+        },
+    };
+
+    let cuis_cell: &RefCell<HashMap<u32, Rc<Box<dyn ControlUi>>>> = control_uis.borrow();
+    let cuis_map = cuis_cell.borrow();
+    for desc in descriptions {
+        let ctrl_ui = match cuis_map.get(&desc.id) {
+            Some(c) => c,
+            None => continue,
+        };
+
+        ctrl_ui.update_state(&desc);
+        // TODO Really always needed?
+        ctrl_ui.update_value(&desc);
+    }
 }
 
 fn create_group_with_error(msg: String) -> Vec<PreferencesGroup> {
