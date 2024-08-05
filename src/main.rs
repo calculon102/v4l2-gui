@@ -1,23 +1,22 @@
 use std::borrow::Borrow;
 use std::cell::RefCell;
-use std::fmt::{Display, Formatter};
 use std::rc::Rc;
 
 use adw::{
-    prelude::*, Application, ComboRow, PreferencesGroup, PreferencesPage, PreferencesRow, SwitchRow,
+    prelude::*, Application, PreferencesGroup, PreferencesPage, PreferencesRow,
 };
-use components::{create_hbox, create_info_row, create_pref_row_with_box_and_label};
-use gtk::gio::ListStore;
+use components::{create_info_row, create_pref_row_with_box_and_label};
+use controls::{BooleanControl, ButtonControl, IntegerControl, MenuControl};
+use controls::ControlUi;
 use gtk::ApplicationWindow;
 use gtk::{
-    glib, Adjustment, Align, Button, DropDown, Label, ListItem, Orientation, PositionType, Scale,
-    ScrolledWindow, SignalListItemFactory, StringList,
+    glib, Align, DropDown, Label,
+    ScrolledWindow, StringList,
 };
-use key_value_item::KeyValueItem;
-use v4l::control::Description;
 use v4l::prelude::*;
 
 mod components;
+mod controls;
 mod files;
 mod key_value_item;
 
@@ -135,6 +134,7 @@ fn create_prefs_for_path(device_path: String) -> Vec<PreferencesGroup> {
 
 fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
     let mut groups = vec![];
+    let mut control_uis: Vec<Box<dyn ControlUi>> = vec![];
 
     // Create Caps-Info
     let caps_result = device.query_caps();
@@ -192,81 +192,35 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
             groups.push(new_group);
         }
 
-        let readonly = ctrl_desc.flags.contains(v4l::control::Flags::READ_ONLY);
-        let inactive = ctrl_desc.flags.contains(v4l::control::Flags::INACTIVE);
-
-        let row: PreferencesRow = match ctrl_desc.typ {
+        let row: Rc<PreferencesRow> = match ctrl_desc.typ {
             // TODO Implement
             v4l::control::Type::Area => {
                 println!("Ignore area control {}", ctrl_desc.name);
                 continue;
             },
 
-            // Button with action on camera
-            v4l::control::Type::Button => {
-                let button = Button::builder()
-                    .halign(Align::Center)
-                    .label(ctrl_desc.name.clone())
-                    .sensitive(!readonly && !inactive)
-                    .build();
-
-                let id_copy = ctrl_desc.id;
-                let dev_copy = device.clone();
-                button.connect_clicked(move |_| {
-                    // Spec says, button should set the control to activate
-                    // According to spec, the value itself is ignored
-                    let new_value = v4l::control::Value::Integer(0);
-                    let new_control = v4l::control::Control {
-                        id: id_copy,
-                        value: new_value,
-                    };
-                    match dev_copy.set_control(new_control) {
-                        Ok(_) => {}
-                        Err(e) => eprintln!("Error setting control: {}", e),
-                    };
-                });
-
-                let container = create_hbox();
-                container.append(&button);
-
-                let row = PreferencesRow::new();
-                row.set_child(Some(&container));
-
-                row
-            }
-
             // Boolean-control
             v4l::control::Type::Boolean => {
-                let active = match query_control_boolean(&device, &ctrl_desc) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        println!("{}", e.message);
-                        continue;
-                    }
-                };
+                let ctrl_ui = BooleanControl::new(
+                    device.clone(),
+                    &ctrl_desc,
+                    || { println!("Switched!"); }
+                );
 
-                let row = SwitchRow::builder()
-                    .active(active)
-                    .hexpand(true)
-                    .sensitive(!readonly && !inactive)
-                    .title(ctrl_desc.name.clone())
-                    .build();
+                // TODO control_uis.push(Box::new(ctrl_ui));
+                ctrl_ui.preference_row().clone()
+            }
 
-                let id_copy = ctrl_desc.id;
-                let dev_copy = device.clone();
-                row.connect_active_notify(move |row| {
-                    let new_value = v4l::control::Value::Boolean(row.is_active());
-                    let new_control = v4l::control::Control {
-                        id: id_copy,
-                        value: new_value,
-                    };
-                    match dev_copy.set_control(new_control) {
-                        Ok(_) => {}
-                        Err(e) => eprintln!("Error setting control: {}", e),
-                    };
-                });
+            // Button with action on camera
+            v4l::control::Type::Button => {
+                let ctrl_ui = ButtonControl::new(
+                    device.clone(),
+                    &ctrl_desc,
+                    || { println!("Clicked!"); }
+                );
 
-                row.into()
+                // TODO control_uis.push(Box::new(ctrl_ui));
+                ctrl_ui.preference_row().clone()
             }
 
             // TODO Implement
@@ -291,140 +245,25 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
             | v4l::control::Type::U8
             | v4l::control::Type::U16
             | v4l::control::Type::U32 => {
-                let value = match query_control_integer(&device, &ctrl_desc) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        println!("{}", e.message);
-                        continue;
-                    }
-                };
+                let ctrl_ui = IntegerControl::new(
+                    device.clone(),
+                    &ctrl_desc,
+                    || { println!("Changed!"); }
+                );
 
-                let adjustment = Adjustment::builder()
-                    .lower(ctrl_desc.minimum as f64)
-                    .upper(ctrl_desc.maximum as f64)
-                    .step_increment(ctrl_desc.step as f64)
-                    .value(value as f64)
-                    .build();
-
-                let scale = Scale::builder()
-                    .adjustment(&adjustment)
-                    .digits(0)
-                    .draw_value(true)
-                    .hexpand(true)
-                    .orientation(Orientation::Horizontal)
-                    .sensitive(!readonly && !inactive)
-                    .show_fill_level(true)
-                    .value_pos(PositionType::Right)
-                    .build();
-
-                scale.add_mark(ctrl_desc.default as f64, PositionType::Bottom, None);
-
-                let id_copy = ctrl_desc.id;
-                let dev_copy = device.clone();
-                scale.connect_value_changed(move |scale| {
-                    let new_value = v4l::control::Value::Integer(scale.value() as i64);
-                    let new_control = v4l::control::Control {
-                        id: id_copy,
-                        value: new_value,
-                    };
-                    match dev_copy.set_control(new_control) {
-                        Ok(_) => {}
-                        Err(e) => eprintln!("Error setting control: {}", e),
-                    };
-                });
-
-                let (row, rowbox) = create_pref_row_with_box_and_label(ctrl_desc.name.clone());
-                rowbox.append(&scale);
-
-                row.into()
+                // TODO control_uis.push(Box::new(ctrl_ui));
+                ctrl_ui.preference_row().clone()
             }
 
             v4l::control::Type::IntegerMenu | v4l::control::Type::Menu => {
-                let value = match query_control_integer(&device, &ctrl_desc) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        println!("{}", e.message);
-                        continue;
-                    }
-                };
+                let ctrl_ui = MenuControl::new(
+                    device.clone(),
+                    &ctrl_desc,
+                    || { println!("Menu changed!"); }
+                );
 
-                let ctrl_items = match &ctrl_desc.items {
-                    Some(i) => i,
-                    None => continue,
-                };
-
-                let store = ListStore::with_type(KeyValueItem::static_type());
-                let mut selected_position = 0;
-                let mut count = 0;
-                for item in ctrl_items {
-                    store.append(&KeyValueItem::new(item.0, &item.1.to_string()));
-                    if value as u32 == item.0 {
-                        selected_position = count;
-                    }
-                    count += 1;
-                }
-
-                let factory = SignalListItemFactory::new();
-                factory.connect_setup(|_, list_item| {
-                    let label = Label::new(None);
-                    list_item
-                        .downcast_ref::<ListItem>()
-                        .expect("Needs to be ListItem")
-                        .set_child(Some(&label));
-                });
-
-                factory.connect_bind(|_, list_item| {
-                    let key_value_item = list_item
-                        .downcast_ref::<ListItem>()
-                        .expect("Needs to be ListItem")
-                        .item()
-                        .and_downcast::<KeyValueItem>()
-                        .expect("The item has to be an `KeyValueItem`.");
-
-                    // Get `Label` from `ListItem`
-                    let label = list_item
-                        .downcast_ref::<ListItem>()
-                        .expect("Needs to be ListItem")
-                        .child()
-                        .and_downcast::<Label>()
-                        .expect("The child has to be a `Label`.");
-
-                    // Set "label" to "number"
-                    label.set_label(&key_value_item.label().to_string());
-                });
-
-                let row = ComboRow::builder()
-                    .factory(&factory)
-                    .model(&store)
-                    .sensitive(!readonly && !inactive)
-                    .title(ctrl_desc.name.clone())
-                    .build();
-
-                // TODO What if the given value was not selectable?
-                row.set_selected(selected_position);
-
-                let id_copy = ctrl_desc.id;
-                let dev_copy = device.clone();
-                row.connect_selected_item_notify(move |row| {
-                    let item = row
-                        .model()
-                        .expect("There has to be a model.")
-                        .item(row.selected())
-                        .and_downcast::<KeyValueItem>()
-                        .expect("The item has to be a `KeyValueItem`.");
-
-                    let new_value = v4l::control::Value::Integer(item.id() as i64);
-                    let new_control = v4l::control::Control {
-                        id: id_copy,
-                        value: new_value,
-                    };
-                    match dev_copy.set_control(new_control) {
-                        Ok(_) => {}
-                        Err(e) => eprintln!("Error setting control: {}", e),
-                    };
-                });
-
-                row.into()
+                // TODO control_uis.push(Box::new(ctrl_ui));
+                ctrl_ui.preference_row().clone()
             }
 
             // TODO Implement
@@ -437,7 +276,7 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
         groups
             .last()
             .expect("No group set, while building controls")
-            .add(&row);
+            .add(row.as_ref());
     }
 
     return groups;
@@ -457,59 +296,6 @@ fn create_group_with_error(msg: String) -> Vec<PreferencesGroup> {
     rowbox.append(&err_label);
 
     err_group.add(&row);
-
     return vec![err_group];
 }
 
-#[derive(Debug, Clone)]
-struct ControlValueError {
-    message: String,
-}
-
-impl ControlValueError {
-    fn new(message: String) -> ControlValueError {
-        return ControlValueError { message };
-    }
-}
-
-impl Display for ControlValueError {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
-        write!(f, "{}", self.message)
-    }
-}
-
-fn query_control_boolean(
-    device: &Device,
-    ctrl_desc: &Description,
-) -> Result<bool, ControlValueError> {
-    let control = match device.control(ctrl_desc.id) {
-        Ok(v) => v,
-        Err(e) => return Err(ControlValueError::new(e.to_string())),
-    };
-
-    return match control.value {
-        v4l::control::Value::Boolean(bool_val) => Ok(bool_val),
-        _ => Err(ControlValueError::new(format!(
-            "Value of {} is not a boolean",
-            ctrl_desc.name
-        ))),
-    };
-}
-
-fn query_control_integer(
-    device: &Device,
-    ctrl_desc: &Description,
-) -> Result<i64, ControlValueError> {
-    let control = match device.control(ctrl_desc.id) {
-        Ok(v) => v,
-        Err(e) => return Err(ControlValueError::new(e.to_string())),
-    };
-
-    return match control.value {
-        v4l::control::Value::Integer(int_val) => Ok(int_val),
-        _ => Err(ControlValueError::new(format!(
-            "Value of {} is not an integer",
-            ctrl_desc.name
-        ))),
-    };
-}
