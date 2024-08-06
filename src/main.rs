@@ -6,7 +6,7 @@ use std::rc::Rc;
 use adw::{
     prelude::*, Application, PreferencesGroup, PreferencesPage,
 };
-use components::{create_info_row, create_pref_row_with_box_and_label};
+use components::{create_caps_panel, create_pref_row_with_box_and_label};
 use controls::{BooleanControl, ButtonControl, IntegerControl, MenuControl};
 use controls::ControlUi;
 use gtk::ApplicationWindow;
@@ -24,12 +24,9 @@ mod key_value_item;
 const APP_ID: &str = "de.pixelgerecht.v4l2_gui";
 
 // Next Steps
-// TODO Prevent Update in all controls, when value is not changed
-// TODO Updating flag, to prevent change handlers?
-// TODO Extract Attributes panel into seperate module
+// TODO Put attributes of camrea into a expander
 // TODO Put device-selection into the titlebar
 // TODO Put real camera names into the selection
-// TODO Put attributes of camrea into a expander
 //
 // TODO All controls
 // TODO Hot (de-)plug?
@@ -162,32 +159,8 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
     }));
 
     // Create Caps-Info
-    let caps_result = device.query_caps();
-
-    if caps_result.is_err() {
-        eprintln!(
-            "Error querying caps for device: {}",
-            caps_result.unwrap_err().to_string()
-        );
-        return groups;
-    }
-
-    let caps = caps_result.unwrap();
-
-    let info_group = PreferencesGroup::builder().title("Information").build();
-
-    let (major, minor, patch) = caps.version;
-    let version_string = format!("{}.{}.{}", major, minor, patch);
-    info_group.add(&create_info_row("Bus".to_string(), caps.bus.clone()));
-    info_group.add(&create_info_row("Card".to_string(), caps.card.clone()));
-    info_group.add(&create_info_row("Driver".to_string(), caps.driver.clone()));
-    info_group.add(&create_info_row("Version".to_string(), version_string));
-    info_group.add(&create_info_row(
-        "Capabilities".to_string(),
-        caps.capabilities.to_string(),
-    ));
-
-    groups.push(info_group);
+    let caps_group = create_caps_panel(device.clone());
+    groups.push(caps_group);
 
     // Create a group for each control class
     let ctrls_result = device.query_controls();
