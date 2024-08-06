@@ -13,7 +13,7 @@ pub struct BooleanControl {
 }
 
 impl BooleanControl {
-    pub fn new(device: Rc<Device>, description: &Description, on_switch: fn()) -> Self {
+    pub fn new(device: Rc<Device>, description: &Description, on_switch: Rc<Box<dyn Fn() + 'static>>) -> Self {
         let readonly = description.flags.contains(v4l::control::Flags::READ_ONLY);
         let inactive = description.flags.contains(v4l::control::Flags::INACTIVE);
 
@@ -86,9 +86,12 @@ impl ControlUi for BooleanControl {
     }
 
     fn update_value(&self, description: &Description) {
-        let active = BooleanControl::query_state(self.device.as_ref(), description);
-
-        self.switch_row.set_active(active);
+        let old_value = self.switch_row.is_active();
+        let new_value = BooleanControl::query_state(self.device.as_ref(), description);
+        
+        if new_value != old_value {
+            self.switch_row.set_active(new_value);
+        }
     }
 
     fn update_state(&self, description: &Description) {

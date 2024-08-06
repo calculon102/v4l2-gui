@@ -24,7 +24,6 @@ mod key_value_item;
 const APP_ID: &str = "de.pixelgerecht.v4l2_gui";
 
 // Next Steps
-// TODO Add update-closue to button and boolean
 // TODO Prevent Update in all controls, when value is not changed
 // TODO Updating flag, to prevent change handlers?
 // TODO Extract Attributes panel into seperate module
@@ -227,7 +226,7 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
                 let ctrl_ui = BooleanControl::new(
                     device.clone(),
                     &ctrl_desc,
-                    || { println!("Switched!"); }
+                    update_controls_fn.clone()
                 );
 
                 Box::new(ctrl_ui)
@@ -238,7 +237,7 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
                 let ctrl_ui = ButtonControl::new(
                     device.clone(),
                     &ctrl_desc,
-                    || { println!("Clicked!"); }
+                    update_controls_fn.clone()
                 );
 
                 Box::new(ctrl_ui)
@@ -269,7 +268,7 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
                 let ctrl_ui = IntegerControl::new(
                     device.clone(),
                     &ctrl_desc,
-                    || { println!("Changed!"); }
+                    || { }
                 );
 
                 Box::new(ctrl_ui)

@@ -15,7 +15,7 @@ pub struct ButtonControl {
 }
 
 impl ButtonControl {
-    pub fn new(device: Rc<Device>, description: &Description, on_click: fn()) -> Self {
+    pub fn new(device: Rc<Device>, description: &Description, on_click: Rc<Box<dyn Fn() + 'static>>) -> Self {
         let readonly = description.flags.contains(v4l::control::Flags::READ_ONLY);
         let inactive = description.flags.contains(v4l::control::Flags::INACTIVE);
 
