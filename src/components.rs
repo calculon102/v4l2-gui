@@ -8,9 +8,9 @@ use v4l::Device;
 pub fn create_hbox() -> Box {
     Box::builder()
         .margin_end(12)
-        .margin_top(12)
+        .margin_top(6)
         .margin_start(12)
-        .margin_bottom(12)
+        .margin_bottom(6)
         .orientation(Orientation::Horizontal)
         .spacing(12)
         .build()

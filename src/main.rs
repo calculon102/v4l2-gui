@@ -4,9 +4,9 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use adw::{
-    prelude::*, Application, PreferencesGroup, PreferencesPage,
+    prelude::*, Application, HeaderBar, PreferencesGroup, PreferencesPage
 };
-use components::{create_caps_panel, create_pref_row_with_box_and_label};
+use components::{create_caps_panel, create_hbox, create_pref_row_with_box_and_label};
 use controls::{BooleanControl, ButtonControl, IntegerControl, MenuControl};
 use controls::ControlUi;
 use gtk::ApplicationWindow;
@@ -24,8 +24,6 @@ mod key_value_item;
 const APP_ID: &str = "de.pixelgerecht.v4l2_gui";
 
 // Next Steps
-// TODO Put attributes of camrea into a expander
-// TODO Put device-selection into the titlebar
 // TODO Put real camera names into the selection
 //
 // TODO All controls
@@ -34,6 +32,7 @@ const APP_ID: &str = "de.pixelgerecht.v4l2_gui";
 // TODO Flatpack packaging
 // TODO Error / Notice, when controls cannot be read
 // TODO CLI-Param to overide /dev/video*
+// TODO Right align sliders
 
 fn main() -> glib::ExitCode {
     // Create a new application
@@ -55,20 +54,14 @@ fn build_ui(app: &Application) {
         .collect();
     let device_selection_model = Rc::new(StringList::new(&device_selection_str));
     let device_selection_dropdown = DropDown::builder()
-        .hexpand(true)
         .model(device_selection_model.as_ref())
         .build();
 
-    let (device_selection_row, device_selection_box) =
-        create_pref_row_with_box_and_label("Select device".to_string());
+    let device_selection_box = create_hbox();
+    device_selection_box.append(&Label::new(Some("Select camera: ")));
     device_selection_box.append(&device_selection_dropdown);
 
-    let device_selection_group = PreferencesGroup::new();
-    device_selection_group.set_title("Camera");
-    device_selection_group.add(&device_selection_row);
-
     let page = Rc::new(PreferencesPage::new());
-    page.add(&device_selection_group);
 
     let pref_groups = match device_selection_strings.first() {
         Some(dev) => create_prefs_for_path(dev.to_string()),
@@ -84,6 +77,7 @@ fn build_ui(app: &Application) {
     let page_copy = page.clone();
     let groups_copy = pref_groups_ref.clone();
     let model_copy = device_selection_model.clone();
+
     device_selection_dropdown.connect_selected_item_notify(move |cb| {
         let device_path = match model_copy.string(cb.selected()) {
             Some(dp) => dp,
@@ -116,11 +110,19 @@ fn build_ui(app: &Application) {
 
     scroll.set_child(Some(page.as_ref()));
 
+    let hbox = create_hbox();
+    hbox.append(&device_selection_dropdown);
+
+    let header_bar = HeaderBar::builder()
+        .show_title(false)
+        .build();
+    header_bar.pack_start(&device_selection_box);
+
     // Create a window and set the title
     let window = ApplicationWindow::builder()
         .application(app)
         .child(&scroll)
-        .title("Camera Controls")
+        .titlebar(&header_bar)
         .width_request(800)
         .height_request(600)
         .build();
@@ -174,7 +176,6 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
 
     let ctrls = ctrls_result.unwrap();
 
-    // TODO Reset value on error
     for ctrl_desc in ctrls.iter() {
         // Ignore disabled controls
         if ctrl_desc.flags.contains(v4l::control::Flags::DISABLED) {
@@ -296,7 +297,6 @@ fn update_controls(device: Rc<Device>, control_uis: Rc<RefCell<HashMap<u32, Rc<B
         };
 
         ctrl_ui.update_state(&desc);
-        // TODO Really always needed?
         ctrl_ui.update_value(&desc);
     }
 }
