@@ -104,9 +104,12 @@ impl ControlUi for IntegerControl {
     }
 
     fn update_value(&self, description: &Description) {
-        let value = IntegerControl::query_state(self.device.as_ref(), description);
+        let old_value = self.scale.value();
+        let new_value = IntegerControl::query_state(self.device.as_ref(), description) as f64;
 
-        self.scale.set_value(value as f64);
+        if new_value != old_value {
+            self.scale.set_value(new_value as f64);
+        }
     }
 
     fn update_state(&self, description: &Description) {
