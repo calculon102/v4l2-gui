@@ -28,6 +28,9 @@ const APP_ID: &str = "de.pixelgerecht.v4l2_gui";
 // TODO Prevent Update in all controls, when value is not changed
 // TODO Updating flag, to prevent change handlers?
 // TODO Extract Attributes panel into seperate module
+// TODO Put device-selection into the titlebar
+// TODO Put real camera names into the selection
+// TODO Put attributes of camrea into a expander
 //
 // TODO All controls
 // TODO Hot (de-)plug?
@@ -35,7 +38,6 @@ const APP_ID: &str = "de.pixelgerecht.v4l2_gui";
 // TODO Flatpack packaging
 // TODO Error / Notice, when controls cannot be read
 // TODO CLI-Param to overide /dev/video*
-// TODO More compact sizing possible?
 
 fn main() -> glib::ExitCode {
     // Create a new application
