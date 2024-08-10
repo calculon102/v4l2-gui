@@ -6,16 +6,18 @@ use std::rc::Rc;
 use adw::{
     prelude::*, Application, HeaderBar, PreferencesGroup, PreferencesPage
 };
-use components::{create_caps_panel, create_hbox, create_pref_row_with_box_and_label};
+use aperture::DeviceProvider;
+use components::{create_caps_panel, create_pref_row_with_box_and_label};
 use controls::{BooleanControl, ButtonControl, IntegerControl, MenuControl};
 use controls::ControlUi;
 use gtk::ApplicationWindow;
 use gtk::{
-    glib, Align, DropDown, Label,
-    ScrolledWindow, StringList,
+    glib, Align, Label,
+    ScrolledWindow,
 };
 use v4l::prelude::*;
 
+mod camera;
 mod components;
 mod controls;
 mod files;
@@ -24,8 +26,6 @@ mod key_value_item;
 const APP_ID: &str = "de.pixelgerecht.v4l2_gui";
 
 // Next Steps
-// TODO Put real camera names into the selection
-//
 // TODO All controls
 // TODO Hot (de-)plug?
 // TODO Show image?
@@ -35,38 +35,29 @@ const APP_ID: &str = "de.pixelgerecht.v4l2_gui";
 // TODO Right align sliders
 
 fn main() -> glib::ExitCode {
-    // Create a new application
     let app = Application::builder().application_id(APP_ID).build();
 
+    app.connect_startup(startup);
     app.connect_activate(build_ui);
 
-    // Run the application
     app.run()
 }
 
+fn startup(_app: &Application) {
+    aperture::init(APP_ID);
+}
 
 fn build_ui(app: &Application) {
-    // Create combobox with video-devices for selection
-    let device_selection_strings = files::get_video_devices("/dev");
-    let device_selection_str: Vec<&str> = device_selection_strings
-        .iter()
-        .map(|s| s.as_str())
-        .collect();
-    let device_selection_model = Rc::new(StringList::new(&device_selection_str));
-    let device_selection_dropdown = DropDown::builder()
-        .model(device_selection_model.as_ref())
-        .build();
+    let device_provider = DeviceProvider::instance();
+    let _ = device_provider.start();
 
-    let device_selection_box = create_hbox();
-    device_selection_box.append(&Label::new(Some("Select camera: ")));
-    device_selection_box.append(&device_selection_dropdown);
-
-    let page = Rc::new(PreferencesPage::new());
-
-    let pref_groups = match device_selection_strings.first() {
-        Some(dev) => create_prefs_for_path(dev.to_string()),
+    let default_camera = device_provider.camera(0);
+    let pref_groups = match default_camera {
+        Some(c) => create_prefs_for_path(camera::get_path(&c)),
         None => create_group_with_error("No video device connected".to_string()),
     };
+
+    let page = Rc::new(PreferencesPage::new());
     let pref_groups_ref = Rc::new(RefCell::new(pref_groups));
 
     let groups: &RefCell<Vec<PreferencesGroup>> = pref_groups_ref.borrow();
@@ -74,33 +65,10 @@ fn build_ui(app: &Application) {
         page.add(group);
     }
 
-    let page_copy = page.clone();
-    let groups_copy = pref_groups_ref.clone();
-    let model_copy = device_selection_model.clone();
-
-    device_selection_dropdown.connect_selected_item_notify(move |cb| {
-        let device_path = match model_copy.string(cb.selected()) {
-            Some(dp) => dp,
-            None => { 
-                eprintln!("No string selected at position {}!?", cb.selected());
-                return;
-            },
-        };
-
-        // Remove control groups for old selection
-        let groups: &RefCell<Vec<PreferencesGroup>> = groups_copy.borrow();
-        for group in groups.borrow().iter() {
-            page_copy.remove(group);
-        }
-        groups.borrow_mut().clear();
-
-        // Add control groups for new selection
-        let mut new_groups: Vec<PreferencesGroup> = create_prefs_for_path(device_path.to_string());
-        for group in new_groups.iter() {
-            page_copy.add(group);
-        }
-        groups.borrow_mut().append(&mut new_groups);
-    });
+    let device_selection_box = camera::get_camera_selection_box(
+        page.clone(),
+        pref_groups_ref.clone()
+    );
 
     let scroll = ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
@@ -109,9 +77,6 @@ fn build_ui(app: &Application) {
         .build();
 
     scroll.set_child(Some(page.as_ref()));
-
-    let hbox = create_hbox();
-    hbox.append(&device_selection_dropdown);
 
     let header_bar = HeaderBar::builder()
         .show_title(false)
