@@ -43,7 +43,8 @@ impl IntegerControl {
             .value_pos(PositionType::Right)
             .build();
 
-        scale.add_mark(description.default as f64, PositionType::Bottom, None);
+        // TODO Adding a mark leads to assertion failure in GTK-GSK
+        // scale.add_mark(description.default as f64, PositionType::Bottom, None);
 
         let id_copy = description.id;
         let dev_copy = device.clone();

@@ -1,13 +1,17 @@
 use std::{cell::RefCell, rc::Rc};
 
-use aperture::{Camera, DeviceProvider};
+use aperture::{Camera, DeviceProvider, Viewfinder};
 use gtk::{Align, Box, DropDown, Label, ListItem, SignalListItemFactory};
 use adw::{prelude::*, PreferencesGroup, PreferencesPage};
 
 use crate::{components::create_hbox, create_prefs_for_path};
 
 
-pub fn get_camera_selection_box(page: Rc<PreferencesPage>, pref_groups: Rc<RefCell<Vec<PreferencesGroup>>>) -> Box {
+pub fn get_camera_selection_box(
+    page: Rc<PreferencesPage>,
+    pref_groups: Rc<RefCell<Vec<PreferencesGroup>>>,
+    camera_view: Rc<Viewfinder>
+    ) -> Box {
     let device_provider = DeviceProvider::instance();
     let _ = device_provider.start();
     
@@ -71,6 +75,8 @@ pub fn get_camera_selection_box(page: Rc<PreferencesPage>, pref_groups: Rc<RefCe
             page.add(group);
         }
         pref_groups.borrow_mut().append(&mut new_groups);
+
+        camera_view.set_camera(Some(camera));
     });
 
 

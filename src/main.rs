@@ -4,13 +4,13 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use adw::{
-    prelude::*, Application, HeaderBar, PreferencesGroup, PreferencesPage
+    prelude::*, Application, HeaderBar, OverlaySplitView, PreferencesGroup, PreferencesPage
 };
-use aperture::DeviceProvider;
-use components::{create_caps_panel, create_pref_row_with_box_and_label};
+use aperture::{DeviceProvider, Viewfinder};
+use components::create_pref_row_with_box_and_label;
 use controls::{BooleanControl, ButtonControl, IntegerControl, MenuControl};
 use controls::ControlUi;
-use gtk::ApplicationWindow;
+use gtk::{ApplicationWindow, Orientation};
 use gtk::{
     glib, Align, Label,
     ScrolledWindow,
@@ -28,14 +28,19 @@ const APP_ID: &str = "de.pixelgerecht.v4l2_gui";
 // Next Steps
 // TODO All controls
 // TODO Hot (de-)plug?
-// TODO Show image?
 // TODO Flatpack packaging
 // TODO Error / Notice, when controls cannot be read
 // TODO CLI-Param to overide /dev/video*
 // TODO Right align sliders
+// TODO Right align menus
+// TODO About Dialog
+// TODO Reset to defaults
+// TODO Where to put caps and device-selection?
 
 fn main() -> glib::ExitCode {
-    let app = Application::builder().application_id(APP_ID).build();
+    let app = Application::builder()
+        .application_id(APP_ID)
+        .build();
 
     app.connect_startup(startup);
     app.connect_activate(build_ui);
@@ -52,12 +57,18 @@ fn build_ui(app: &Application) {
     let _ = device_provider.start();
 
     let default_camera = device_provider.camera(0);
-    let pref_groups = match default_camera {
+    let pref_groups = match &default_camera {
         Some(c) => create_prefs_for_path(camera::get_path(&c)),
         None => create_group_with_error("No video device connected".to_string()),
     };
 
-    let page = Rc::new(PreferencesPage::new());
+    let page = Rc::new(PreferencesPage::builder()
+        .hexpand(false)
+        .vexpand(true)
+        .height_request(800)
+        .width_request(400) 
+        .receives_default(true)
+        .build());
     let pref_groups_ref = Rc::new(RefCell::new(pref_groups));
 
     let groups: &RefCell<Vec<PreferencesGroup>> = pref_groups_ref.borrow();
@@ -65,34 +76,55 @@ fn build_ui(app: &Application) {
         page.add(group);
     }
 
-    let device_selection_box = camera::get_camera_selection_box(
-        page.clone(),
-        pref_groups_ref.clone()
-    );
-
-    let scroll = ScrolledWindow::builder()
+    let sidebar = ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
         .min_content_height(600)
         .vexpand(true)
         .build();
 
-    scroll.set_child(Some(page.as_ref()));
+    sidebar.set_child(Some(page.as_ref()));
+
+    let camera_view = Rc::new(Viewfinder::new());
+
+    let device_selection_box = camera::get_camera_selection_box(
+        page.clone(),
+        pref_groups_ref.clone(),
+        camera_view.clone()
+    );
+
+    let content = gtk::Box::builder()
+        .orientation(Orientation::Vertical)
+        .margin_end(12)
+        .margin_top(12)
+        .margin_start(12)
+        .margin_bottom(12)
+        .spacing(12)
+        .build();
+
+    content.append(&device_selection_box);
+    content.append(camera_view.as_ref());
 
     let header_bar = HeaderBar::builder()
-        .show_title(false)
+        .show_title(true)
         .build();
-    header_bar.pack_start(&device_selection_box);
+
+    let split_view = OverlaySplitView::builder()
+        .content(&content)
+        .sidebar(&sidebar)
+        .max_sidebar_width(800.0)
+        .min_sidebar_width(600.0)
+        .pin_sidebar(true)
+        .build();
 
     // Create a window and set the title
     let window = ApplicationWindow::builder()
         .application(app)
-        .child(&scroll)
+        .child(&split_view)
         .titlebar(&header_bar)
-        .width_request(800)
-        .height_request(600)
+        .width_request(1280)
+        .height_request(720)
         .build();
 
-    // Present window
     window.present();
 }
 
@@ -126,8 +158,8 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
     }));
 
     // Create Caps-Info
-    let caps_group = create_caps_panel(device.clone());
-    groups.push(caps_group);
+    // let caps_group = create_caps_panel(device.clone());
+    // groups.push(caps_group);
 
     // Create a group for each control class
     let ctrls_result = device.query_controls();

@@ -1,6 +1,6 @@
 use std::fs;
 
-pub fn get_video_devices(dir: &str) -> Vec<String> {
+pub fn _get_video_devices(dir: &str) -> Vec<String> {
     let mut video_files = Vec::new();
 
     // Read the entries in the specified directory
@@ -42,7 +42,7 @@ mod tests {
         File::create(&video_file_1).unwrap();
         File::create(&non_video_file).unwrap();
 
-        let mut result = get_video_devices(dir_path.to_str().unwrap());
+        let mut result = _get_video_devices(dir_path.to_str().unwrap());
 
         // Convert paths to strings for easier comparison
         result.sort();
