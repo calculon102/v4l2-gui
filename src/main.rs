@@ -31,8 +31,6 @@ const APP_ID: &str = "de.pixelgerecht.v4l2_gui";
 // TODO Flatpack packaging
 // TODO Error / Notice, when controls cannot be read
 // TODO CLI-Param to overide /dev/video*
-// TODO Right align sliders
-// TODO Right align menus
 // TODO About Dialog
 // TODO Reset to defaults
 // TODO Where to put caps and device-selection?

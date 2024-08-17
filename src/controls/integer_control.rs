@@ -36,11 +36,13 @@ impl IntegerControl {
             .adjustment(&adjustment)
             .digits(0)
             .draw_value(true)
+            .halign(gtk::Align::End)
             .hexpand(true)
             .orientation(Orientation::Horizontal)
             .sensitive(!readonly && !inactive)
             .show_fill_level(true)
             .value_pos(PositionType::Right)
+            .width_request(360)
             .build();
 
         // TODO Adding a mark leads to assertion failure in GTK-GSK

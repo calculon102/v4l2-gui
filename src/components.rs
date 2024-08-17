@@ -20,9 +20,9 @@ pub fn create_hbox() -> Box {
 pub fn create_label(label: String) -> Label {
     Label::builder()
         .ellipsize(gtk::pango::EllipsizeMode::End)
+        .halign(gtk::Align::Start)
         .label(label.as_str())
         .tooltip_text(label.as_str())
-        .max_width_chars(12)
         .xalign(0.0)
         .build()
 }

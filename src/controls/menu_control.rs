@@ -45,7 +45,9 @@ impl MenuControl {
 
         let factory = SignalListItemFactory::new();
         factory.connect_setup(|_, list_item| {
-            let label = Label::new(None);
+            let label = Label::builder()
+                .halign(gtk::Align::End)
+                .build();
             list_item
                 .downcast_ref::<ListItem>()
                 .expect("Needs to be ListItem")
