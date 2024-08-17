@@ -12,9 +12,38 @@ pub fn get_camera_selection_box(
     pref_groups: Rc<RefCell<Vec<PreferencesGroup>>>,
     camera_view: Rc<Viewfinder>
     ) -> Box {
+    let device_selection_box = create_hbox();
+
     let device_provider = DeviceProvider::instance();
     let _ = device_provider.start();
     
+    let camera_count = device_provider.n_items();
+    
+    if camera_count == 0 {
+        let label = Label::builder()
+            .label("No camera detected")
+            .halign(Align::Center)
+            .xalign(0.5)
+            .build();
+
+        device_selection_box.append(&label);
+        return device_selection_box;
+    }
+
+    if camera_count == 1 {
+        let only_cam = device_provider.camera(0).unwrap();
+        let camera_label = get_name(&only_cam);
+
+        let label = Label::builder()
+            .label(&camera_label)
+            .halign(Align::Center)
+            .xalign(0.5)
+            .build();
+
+        device_selection_box.append(&label);
+        return device_selection_box;
+    }
+
     let factory = SignalListItemFactory::new();
 
     factory.connect_setup(|_, list_item| {
@@ -79,8 +108,6 @@ pub fn get_camera_selection_box(
         camera_view.set_camera(Some(camera));
     });
 
-
-    let device_selection_box = create_hbox();
     device_selection_box.append(&Label::new(Some("Select camera: ")));
     device_selection_box.append(&device_selection_dropdown);
 

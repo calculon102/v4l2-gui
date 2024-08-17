@@ -7,7 +7,7 @@ use adw::{
     prelude::*, Application, HeaderBar, OverlaySplitView, PreferencesGroup, PreferencesPage
 };
 use aperture::{DeviceProvider, Viewfinder};
-use components::create_pref_row_with_box_and_label;
+use components::{create_pref_row_with_box_and_label};
 use controls::{BooleanControl, ButtonControl, IntegerControl, MenuControl};
 use controls::ControlUi;
 use gtk::{ApplicationWindow, Orientation};
@@ -33,7 +33,8 @@ const APP_ID: &str = "de.pixelgerecht.v4l2_gui";
 // TODO CLI-Param to overide /dev/video*
 // TODO About Dialog
 // TODO Reset to defaults
-// TODO Where to put caps and device-selection?
+// TODO Where to put caps 
+// TODO Specific view in window, when no camera present
 
 fn main() -> glib::ExitCode {
     let app = Application::builder()
@@ -61,11 +62,10 @@ fn build_ui(app: &Application) {
     };
 
     let page = Rc::new(PreferencesPage::builder()
+        .height_request(800)
         .hexpand(false)
         .vexpand(true)
-        .height_request(800)
         .width_request(400) 
-        .receives_default(true)
         .build());
     let pref_groups_ref = Rc::new(RefCell::new(pref_groups));
 
@@ -99,12 +99,12 @@ fn build_ui(app: &Application) {
         .spacing(12)
         .build();
 
-    content.append(&device_selection_box);
     content.append(camera_view.as_ref());
 
     let header_bar = HeaderBar::builder()
-        .show_title(true)
+        .title_widget(&device_selection_box)
         .build();
+
 
     let split_view = OverlaySplitView::builder()
         .content(&content)

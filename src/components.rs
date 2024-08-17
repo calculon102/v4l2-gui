@@ -69,6 +69,7 @@ pub fn create_caps_panel(device: Rc<Device>) -> PreferencesGroup {
     };
 
     let expander = ExpanderRow::builder()
+        .expanded(true)
         .title("Camera Details")
         .build();
 
