@@ -4,10 +4,10 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use adw::{
-    prelude::*, Application, HeaderBar, OverlaySplitView, PreferencesGroup, PreferencesPage
+    prelude::*, Application, HeaderBar, OverlaySplitView, PreferencesGroup, PreferencesPage, StatusPage
 };
 use aperture::{DeviceProvider, Viewfinder};
-use components::{create_pref_row_with_box_and_label};
+use components::create_pref_row_with_box_and_label;
 use controls::{BooleanControl, ButtonControl, IntegerControl, MenuControl};
 use controls::ControlUi;
 use gtk::{ApplicationWindow, Orientation};
@@ -25,6 +25,10 @@ mod key_value_item;
 
 const APP_ID: &str = "de.pixelgerecht.v4l2_gui";
 
+const WINDOW_WIDTH: i32 = 1280;
+const WINDOW_HEIGHT: i32 = 720;
+
+
 // Next Steps
 // TODO All controls
 // TODO Hot (de-)plug?
@@ -34,7 +38,6 @@ const APP_ID: &str = "de.pixelgerecht.v4l2_gui";
 // TODO About Dialog
 // TODO Reset to defaults
 // TODO Where to put caps 
-// TODO Specific view in window, when no camera present
 
 fn main() -> glib::ExitCode {
     let app = Application::builder()
@@ -53,12 +56,31 @@ fn startup(_app: &Application) {
 
 fn build_ui(app: &Application) {
     let device_provider = DeviceProvider::instance();
-    let _ = device_provider.start();
+    
+    // TODO Maybe in background check, with spinner in GUI?
+    match device_provider.start() {
+        Ok(_) => {}, // Just continue
+        Err(e) => {
+            present_window_with_error(
+                app,
+                "Error starting device provider".to_string(),
+                e.to_string()
+            );
+            return;
+        }
+    };
 
     let default_camera = device_provider.camera(0);
     let pref_groups = match &default_camera {
         Some(c) => create_prefs_for_path(camera::get_path(&c)),
-        None => create_group_with_error("No video device connected".to_string()),
+        None => {
+            present_window_with_error(
+                app,
+                "No camera-device found".to_string(),
+                "Connect a camera and restart this app".to_string()
+            );
+            return;
+        },
     };
 
     let page = Rc::new(PreferencesPage::builder()
@@ -118,9 +140,27 @@ fn build_ui(app: &Application) {
     let window = ApplicationWindow::builder()
         .application(app)
         .child(&split_view)
+        .height_request(WINDOW_HEIGHT)
         .titlebar(&header_bar)
-        .width_request(1280)
-        .height_request(720)
+        .width_request(WINDOW_WIDTH)
+        .build();
+
+    window.present();
+}
+
+fn present_window_with_error(app: &Application, title: String, description: String) {
+    // TODO Add Icon
+    let status_page = StatusPage::builder()
+        .title(title)
+        .description(description)
+        .build();
+
+    let window = ApplicationWindow::builder()
+        .application(app)
+        .child(&status_page)
+        .height_request(WINDOW_HEIGHT)
+        .title("Camera Controls")
+        .width_request(WINDOW_WIDTH)
         .build();
 
     window.present();
