@@ -4,13 +4,14 @@ use aperture::{Camera, DeviceProvider, Viewfinder};
 use gtk::{Align, Box, DropDown, Label, ListItem, SignalListItemFactory};
 use adw::{prelude::*, PreferencesGroup, PreferencesPage};
 
-use crate::{components::create_hbox, create_prefs_for_path};
+use crate::{components::create_hbox, create_prefs_for_path, widgets::CapsPanel};
 
 
 pub fn get_camera_selection_box(
     page: Rc<PreferencesPage>,
     pref_groups: Rc<RefCell<Vec<PreferencesGroup>>>,
-    camera_view: Rc<Viewfinder>
+    camera_view: Rc<Viewfinder>,
+    caps_panel: Rc<RefCell<CapsPanel>>,
     ) -> Box {
     let device_selection_box = create_hbox();
 
@@ -105,6 +106,7 @@ pub fn get_camera_selection_box(
         }
         pref_groups.borrow_mut().append(&mut new_groups);
 
+        caps_panel.borrow_mut().update(&camera);
         camera_view.set_camera(Some(camera));
     });
 

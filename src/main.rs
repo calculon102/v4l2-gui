@@ -10,18 +10,20 @@ use aperture::{DeviceProvider, Viewfinder};
 use components::create_pref_row_with_box_and_label;
 use controls::{BooleanControl, ButtonControl, IntegerControl, MenuControl};
 use controls::ControlUi;
-use gtk::{ApplicationWindow, Orientation};
+use gtk::{ApplicationWindow, Orientation, Revealer, ToggleButton};
 use gtk::{
     glib, Align, Label,
     ScrolledWindow,
 };
 use v4l::prelude::*;
+use widgets::CapsPanel;
 
 mod camera;
 mod components;
 mod controls;
 mod files;
 mod key_value_item;
+mod widgets;
 
 const APP_ID: &str = "de.pixelgerecht.v4l2_gui";
 
@@ -37,7 +39,8 @@ const WINDOW_HEIGHT: i32 = 720;
 // TODO CLI-Param to overide /dev/video*
 // TODO About Dialog
 // TODO Reset to defaults
-// TODO Where to put caps 
+// TODO Application Icon
+// TODO Collapse icon for view
 
 fn main() -> glib::ExitCode {
     let app = Application::builder()
@@ -106,14 +109,17 @@ fn build_ui(app: &Application) {
 
     let camera_view = Rc::new(Viewfinder::new());
 
-    let device_selection_box = camera::get_camera_selection_box(
-        page.clone(),
-        pref_groups_ref.clone(),
-        camera_view.clone()
-    );
+    let caps_panel = Rc::new(RefCell::new(CapsPanel::new(&default_camera.unwrap())));
+    let caps_panel_ref: &RefCell<CapsPanel> = caps_panel.borrow();
+
+    let caps_revealer = Revealer::builder()
+        .child(caps_panel_ref.borrow().get_panel().as_ref())
+        .reveal_child(false)
+        .transition_type(gtk::RevealerTransitionType::SlideLeft)
+        .build();
 
     let content = gtk::Box::builder()
-        .orientation(Orientation::Vertical)
+        .orientation(Orientation::Horizontal)
         .margin_end(12)
         .margin_top(12)
         .margin_start(12)
@@ -122,11 +128,32 @@ fn build_ui(app: &Application) {
         .build();
 
     content.append(camera_view.as_ref());
+    content.append(&caps_revealer);
+
+    let device_selection_box = camera::get_camera_selection_box(
+        page.clone(),
+        pref_groups_ref.clone(),
+        camera_view.clone(),
+        caps_panel.clone(),
+    );
 
     let header_bar = HeaderBar::builder()
         .title_widget(&device_selection_box)
         .build();
 
+    // TODO Use icon
+    let caps_reveal_button = ToggleButton::builder()
+        .label("Details")
+        .css_classes(["flat"])
+        .build();
+
+    caps_reveal_button.connect_clicked(move |_| {
+        caps_revealer.set_reveal_child(
+            !caps_revealer.reveals_child()
+        );
+    });
+
+    header_bar.pack_end(&caps_reveal_button);
 
     let split_view = OverlaySplitView::builder()
         .content(&content)
