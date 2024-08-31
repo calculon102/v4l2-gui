@@ -32,15 +32,15 @@ const WINDOW_HEIGHT: i32 = 720;
 
 
 // Next Steps
+// TODO Reset to defaults
+// TODO Application Icon
+// TODO Collapse icon for view
 // TODO All controls
 // TODO Hot (de-)plug?
 // TODO Flatpack packaging
 // TODO Error / Notice, when controls cannot be read
 // TODO CLI-Param to overide /dev/video*
 // TODO About Dialog
-// TODO Reset to defaults
-// TODO Application Icon
-// TODO Collapse icon for view
 
 fn main() -> glib::ExitCode {
     let app = Application::builder()
@@ -59,7 +59,7 @@ fn startup(_app: &Application) {
 
 fn build_ui(app: &Application) {
     let device_provider = DeviceProvider::instance();
-    
+
     // TODO Maybe in background check, with spinner in GUI?
     match device_provider.start() {
         Ok(_) => {}, // Just continue

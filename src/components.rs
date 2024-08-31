@@ -4,12 +4,8 @@ use gtk::{Box, Label, Orientation};
 /// Creates a preconfigured, horizontal box
 pub fn create_hbox() -> Box {
     Box::builder()
-        .margin_end(12)
-        .margin_top(6)
         .margin_start(12)
-        .margin_bottom(6)
         .orientation(Orientation::Horizontal)
-        .spacing(12)
         .build()
 }
 
