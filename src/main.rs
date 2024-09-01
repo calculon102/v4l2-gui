@@ -10,9 +10,9 @@ use aperture::{DeviceProvider, Viewfinder};
 use components::create_pref_row_with_box_and_label;
 use controls::{BooleanControl, ButtonControl, IntegerControl, MenuControl};
 use controls::ControlUi;
-use gtk::{ApplicationWindow, Orientation, Revealer, ToggleButton};
+use gtk::{ApplicationWindow, Button, Orientation, Revealer, ToggleButton};
 use gtk::{
-    glib, Align, Label,
+    gio, glib, Align, Label,
     ScrolledWindow,
 };
 use v4l::prelude::*;
@@ -25,7 +25,7 @@ mod files;
 mod key_value_item;
 mod widgets;
 
-const APP_ID: &str = "de.pixelgerecht.v4l2_gui";
+const APP_ID: &str = "de.pixelgerecht.CameraSettings";
 
 const WINDOW_WIDTH: i32 = 1280;
 const WINDOW_HEIGHT: i32 = 720;
@@ -35,6 +35,9 @@ const WINDOW_HEIGHT: i32 = 720;
 // TODO Reset to defaults
 // TODO Application Icon
 // TODO Collapse icon for view
+// TODO Read all informations into capabilities
+// TODO What if device is in use by other app?
+// TODO What if aperture assertion?
 // TODO All controls
 // TODO Hot (de-)plug?
 // TODO Flatpack packaging
@@ -43,6 +46,9 @@ const WINDOW_HEIGHT: i32 = 720;
 // TODO About Dialog
 
 fn main() -> glib::ExitCode {
+    gio::resources_register_include!("camera_settings.gresource")
+        .expect("Failed to register resources.");
+
     let app = Application::builder()
         .application_id(APP_ID)
         .build();
@@ -141,10 +147,20 @@ fn build_ui(app: &Application) {
         .title_widget(&device_selection_box)
         .build();
 
-    // TODO Use icon
-    let caps_reveal_button = ToggleButton::builder()
-        .label("Details")
+    let reset_defaults_button = Button::builder()
         .css_classes(["flat"])
+        .icon_name("arrow-hook-left-horizontal2-symbolic")
+        .tooltip_text("Reset camera defaults")
+        .build();
+
+    reset_defaults_button.connect_clicked(move |_| {
+
+    });
+
+    let caps_reveal_button = ToggleButton::builder()
+        .css_classes(["flat"])
+        .icon_name("info-outline-symbolic")
+        .tooltip_text("Show camera details")
         .build();
 
     caps_reveal_button.connect_clicked(move |_| {
@@ -153,6 +169,7 @@ fn build_ui(app: &Application) {
         );
     });
 
+    header_bar.pack_start(&reset_defaults_button);
     header_bar.pack_end(&caps_reveal_button);
 
     let split_view = OverlaySplitView::builder()
@@ -221,10 +238,6 @@ fn create_controls_for_device(device: Rc<Device>) -> Vec<PreferencesGroup> {
     let update_controls_fn: Rc<Box<dyn Fn() + 'static>> = Rc::new(Box::new(move || {
         update_controls(device_copy.clone(), control_uis_copy.clone())
     }));
-
-    // Create Caps-Info
-    // let caps_group = create_caps_panel(device.clone());
-    // groups.push(caps_group);
 
     // Create a group for each control class
     let ctrls_result = device.query_controls();
