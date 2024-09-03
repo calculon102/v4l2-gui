@@ -15,6 +15,7 @@ use crate::key_value_item::KeyValueItem;
 use super::{ControlUi, ControlValueError};
 
 pub struct MenuControl {
+    default: i64,
     device: Rc<Device>,
     combo_row: Rc<ComboRow>,
 }
@@ -107,6 +108,7 @@ impl MenuControl {
         });
 
         MenuControl {
+            default: description.default,
             device: device.clone(),
             combo_row: Rc::new(row),
         }
@@ -182,6 +184,21 @@ impl ControlUi for MenuControl {
         let inactive = description.flags.contains(v4l::control::Flags::INACTIVE);
 
         self.combo_row.set_sensitive(!readonly && !inactive);
+    }
+
+    fn reset_default(&self) {
+        let model = self.combo_row.model().expect("Expect comborow to have a model.");
+
+        for i in 0..model.n_items() {
+            let item = model.item(i)
+                .and_downcast::<KeyValueItem>()
+                .expect("The item has to be a `KeyValueItem`.");
+
+            if item.id() == self.default as u32 {
+                self.combo_row.set_selected(i);
+                break;
+            }
+        }
     }
 }
 

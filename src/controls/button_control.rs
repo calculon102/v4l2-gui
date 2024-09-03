@@ -69,5 +69,9 @@ impl ControlUi for ButtonControl {
 
         self.button.set_sensitive(!readonly && !inactive);
     }
+
+    fn reset_default(&self) {
+        // NOP
+    }
 }
 

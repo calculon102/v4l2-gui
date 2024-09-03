@@ -8,6 +8,7 @@ use v4l::{control::Description, Device};
 use super::{ControlUi, ControlValueError};
 
 pub struct BooleanControl {
+    default: i64,
     device: Rc<Device>,
     switch_row: Rc<SwitchRow>,
 }
@@ -41,6 +42,7 @@ impl BooleanControl {
         });
 
         BooleanControl {
+            default: description.default,
             device: device.clone(),
             switch_row: Rc::new(row),
         }
@@ -99,6 +101,11 @@ impl ControlUi for BooleanControl {
         let inactive = description.flags.contains(v4l::control::Flags::INACTIVE);
 
         self.switch_row.set_sensitive(!readonly && !inactive);
+    }
+
+    fn reset_default(&self) {
+        let active = if self.default == 0 { false } else { true };
+        self.switch_row.set_active(active)
     }
 }
 

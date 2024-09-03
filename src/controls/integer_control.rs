@@ -13,6 +13,7 @@ use crate::components::create_pref_row_with_box_and_label;
 use super::{ControlUi, ControlValueError};
 
 pub struct IntegerControl {
+    default: i64,
     device: Rc<Device>,
     pref_row: Rc<PreferencesRow>,
     scale: Scale,
@@ -66,6 +67,7 @@ impl IntegerControl {
         rowbox.append(&scale);
 
         IntegerControl {
+            default: description.default,
             device: device.clone(),
             pref_row: Rc::new(row),
             scale,
@@ -120,6 +122,10 @@ impl ControlUi for IntegerControl {
         let inactive = description.flags.contains(v4l::control::Flags::INACTIVE);
 
         self.scale.set_sensitive(!readonly && !inactive);
+    }
+
+    fn reset_default(&self) {
+        self.scale.set_value(self.default as f64)
     }
 }
 

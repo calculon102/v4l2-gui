@@ -1553,6 +1553,7 @@ dependencies = [
  "glib-build-tools",
  "gtk4",
  "libadwaita",
+ "log",
  "tempfile",
  "v4l",
 ]

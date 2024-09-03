@@ -2,14 +2,13 @@ use std::{cell::RefCell, rc::Rc};
 
 use aperture::{Camera, DeviceProvider, Viewfinder};
 use gtk::{Align, Box, DropDown, Label, ListItem, SignalListItemFactory};
-use adw::{prelude::*, PreferencesGroup, PreferencesPage};
+use adw::prelude::*;
 
-use crate::{components::create_hbox, create_prefs_for_path, widgets::CapsPanel};
+use crate::{components::create_hbox, widgets::{CapsPanel, ControlsPanel}};
 
 
 pub fn get_camera_selection_box(
-    page: Rc<PreferencesPage>,
-    pref_groups: Rc<RefCell<Vec<PreferencesGroup>>>,
+    pref_groups: Rc<RefCell<ControlsPanel>>,
     camera_view: Rc<Viewfinder>,
     caps_panel: Rc<RefCell<CapsPanel>>,
     ) -> Box {
@@ -93,18 +92,10 @@ pub fn get_camera_selection_box(
         };
         let path = get_path(&camera);
 
-        // Remove control groups for old selection
-        for group in pref_groups.borrow().iter() {
-            page.remove(group);
-        }
-        pref_groups.borrow_mut().clear();
-
-        // Add control groups for new selection
-        let mut new_groups: Vec<PreferencesGroup> = create_prefs_for_path(path);
-        for group in new_groups.iter() {
-            page.add(group);
-        }
-        pref_groups.borrow_mut().append(&mut new_groups);
+        pref_groups
+            .as_ref()
+            .borrow_mut()
+            .switch_device(path);
 
         caps_panel.borrow_mut().update(&camera);
         camera_view.set_camera(Some(camera));
