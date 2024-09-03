@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <gresources>
   <gresource prefix="/de/pixelgerecht/CameraSettings/icons/16x16/actions/">
-    <file preprocess="xml-stripblanks" alias="info-outline-symbolic.svg">icons/info-outline-symbolic.svg</file>
     <file preprocess="xml-stripblanks" alias="arrow-hook-left-horizontal2-symbolic.svg">icons/arrow-hook-left-horizontal2-symbolic.svg</file>
+    <file preprocess="xml-stripblanks" alias="info-outline-symbolic.svg">icons/info-outline-symbolic.svg</file>
+    <file preprocess="xml-stripblanks" alias="unreadable-symbolic.svg">icons/unreadable-symbolic.svg</file>
   </gresource>
 </gresources>

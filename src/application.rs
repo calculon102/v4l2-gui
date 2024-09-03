@@ -237,17 +237,17 @@ impl Application {
 }
 
 fn present_window_with_error(app: &Application, title: String, description: String) {
-    // TODO Add Icon
     let status_page = StatusPage::builder()
-        .title(title)
         .description(description)
+        .icon_name("unreadable-symbolic")
+        .title(title)
         .build();
 
     let window = ApplicationWindow::builder()
         .application(app)
         .child(&status_page)
         .height_request(WINDOW_HEIGHT)
-        .title("Camera Controls")
+        .title("Camera Settings")
         .width_request(WINDOW_WIDTH)
         .build();
 
