@@ -12,7 +12,6 @@ mod key_value_item;
 mod widgets;
 
 // Next Steps
-// TODO Read all informations into capabilities
 // TODO About Dialog
 // TODO Flatpack packaging
 // TODO What if device is in use by other app?

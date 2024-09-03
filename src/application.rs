@@ -93,24 +93,31 @@ mod imp {
                 page.add(group);
             }
 
-            let sidebar = ScrolledWindow::builder()
+            let controls_sidebar = ScrolledWindow::builder()
                 .hscrollbar_policy(gtk::PolicyType::Never)
                 .min_content_height(600)
                 .vexpand(true)
                 .build();
 
-            sidebar.set_child(Some(page.as_ref()));
+            controls_sidebar.set_child(Some(page.as_ref()));
 
             let camera_view = Rc::new(Viewfinder::new());
 
-            let caps_panel = Rc::new(RefCell::new(CapsPanel::new(&default_camera.unwrap())));
-            let caps_panel_ref: &RefCell<CapsPanel> = caps_panel.borrow();
+            let info_panel = Rc::new(RefCell::new(CapsPanel::new(&default_camera.unwrap())));
+            let info_panel_ref = info_panel.as_ref().borrow();
 
-            let caps_revealer = Revealer::builder()
-                .child(caps_panel_ref.borrow().get_panel().as_ref())
+            let info_sidebar = ScrolledWindow::builder()
+                .hscrollbar_policy(gtk::PolicyType::Never)
+                .vexpand(true)
+                .build();
+            info_sidebar.set_child(Some(info_panel_ref.get_panel().as_ref()));
+
+            let info_revealer = Revealer::builder()
+                .child(&info_sidebar)
                 .reveal_child(false)
                 .transition_type(gtk::RevealerTransitionType::SlideLeft)
                 .build();
+
 
             let content = gtk::Box::builder()
                 .orientation(Orientation::Horizontal)
@@ -122,12 +129,12 @@ mod imp {
                 .build();
 
             content.append(camera_view.as_ref());
-            content.append(&caps_revealer);
+            content.append(&info_revealer);
 
             let device_selection_box = crate::camera::get_camera_selection_box(
                 controls_panel.clone(),
                 camera_view.clone(),
-                caps_panel.clone(),
+                info_panel.clone(),
             );
 
             let header_bar = HeaderBar::builder()
@@ -155,8 +162,8 @@ mod imp {
                 .build();
 
             caps_reveal_button.connect_clicked(move |_| {
-                caps_revealer.set_reveal_child(
-                    !caps_revealer.reveals_child()
+                info_revealer.set_reveal_child(
+                    !info_revealer.reveals_child()
                 );
             });
 
@@ -165,7 +172,7 @@ mod imp {
 
             let split_view = OverlaySplitView::builder()
                 .content(&content)
-                .sidebar(&sidebar)
+                .sidebar(&controls_sidebar)
                 .max_sidebar_width(800.0)
                 .min_sidebar_width(600.0)
                 .pin_sidebar(true)
